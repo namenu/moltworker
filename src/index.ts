@@ -20,7 +20,7 @@
  * - SLACK_BOT_TOKEN + SLACK_APP_TOKEN: Slack tokens
  */
 
-import { Hono } from 'hono';
+import { Hono, type Context, type Next } from 'hono';
 import { getSandbox, Sandbox, type SandboxOptions } from '@cloudflare/sandbox';
 
 import type { AppEnv, MoltbotEnv } from './types';
@@ -195,17 +195,19 @@ app.use('*', async (c, next) => {
   return next();
 });
 
-// Middleware: Cloudflare Access authentication for protected routes
-app.use('*', async (c, next) => {
-  // Determine response type based on Accept header
+// Middleware: Cloudflare Access authentication for protected routes only.
+// The catch-all proxy relies on the gateway token for authentication,
+// so CF Access is only needed for admin/API/debug routes.
+const cfAccessProtected = async (c: Context<AppEnv>, next: Next) => {
   const acceptsHtml = c.req.header('Accept')?.includes('text/html');
   const middleware = createAccessMiddleware({
     type: acceptsHtml ? 'html' : 'json',
     redirectOnMissing: acceptsHtml,
   });
-
   return middleware(c, next);
-});
+};
+app.use('/_admin/*', cfAccessProtected);
+app.use('/debug/*', cfAccessProtected);
 
 // Mount API routes (protected by Cloudflare Access)
 app.route('/api', api);
